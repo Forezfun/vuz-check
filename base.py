@@ -1,60 +1,184 @@
 import requests
-import json
+import browser_cookie3
 
-BASE = "https://www.gosuslugi.ru"
+
+STUDENT_ID = 1280590
+ORGANIZATION_IDS = [2264, 118]
+
+BASE_URL = "https://www.gosuslugi.ru"
+
+
+cookies = browser_cookie3.firefox(domain_name="gosuslugi.ru")
 
 session = requests.Session()
 session.headers.update({
     "User-Agent": "Mozilla/5.0",
     "Accept": "application/json",
 })
+session.cookies.update(cookies)
 
-student_id=1280590 
 
-def get_applicants(competition_id: int):
-    url = f"{BASE}/api/university-applicant-list/v1/public/2026/competition/{competition_id}/applicants"
-    r = session.get(url)
-    r.raise_for_status()
-    return r.json()
+def get_applicants(competition_id: int) -> dict:
+    url = (
+        f"{BASE_URL}/api/university-applicant-list/v1/public/2026/"
+        f"competition/{competition_id}/applicants"
+    )
 
-def parse_applicant(a):
-    return {
-        "rating": a.get("rating"),
-        "score": a.get("sumMark"),
-        "priority": a.get("priority"),
-        "status": a.get("statusName"),
-        "id": a.get("idApplication"),
+    response = session.get(url)
+    response.raise_for_status()
+
+    return response.json()
+
+
+def get_all_applicants(competition_ids: list[int]) -> dict:
+    applicants_by_competition = {}
+
+    for competition_id in competition_ids:
+        try:
+            response_data = get_applicants(competition_id)
+
+            applicants_by_competition[competition_id] = (
+                response_data.get("applicants", [])
+            )
+
+        except Exception as error:
+            print(f"❌ Ошибка {competition_id}: {error}")
+
+    return applicants_by_competition
+
+
+def get_student_competitions(student_id: int) -> list[int]:
+    url = (
+        f"{BASE_URL}/api/university-applicant-list/v1/"
+        f"competition/statuses/applicant-lists-statistics"
+        f"?entrantId={student_id}&listType=applicant-list"
+    )
+
+    response = session.get(url)
+    response.raise_for_status()
+
+    statistics = response.json()
+
+    return [int(item["groupId"]) for item in statistics]
+
+
+def get_program_info(
+    organization_id: int,
+    competition_ids: list[int]
+) -> dict:
+
+    url = (
+        f"{BASE_URL}/api/vuz-navigator/public/v1/2026/"
+        f"educational-programs/items"
+    )
+
+    payload = {
+        "orgId": organization_id,
+        "competitionIds": competition_ids
     }
 
-def get_all_applicants(competition_ids):
-    result = {}
+    response = session.post(url, json=payload)
+    response.raise_for_status()
 
-    for cid in competition_ids:
-        print(f"Загружаю competition {cid}...")
+    programs = {}
 
+    for program in response.json():
+
+        program_name = None
+
+        if program.get("programs"):
+            program_name = program["programs"][0]["name"]
+
+        programs[program["id"]] = {
+            "university": program.get("humanReadableTitle"),
+            "program": program_name,
+            "education_form": program.get("educationFormName"),
+            "places": program.get("numberPlaces"),
+            "organization_id": program.get("organizationId"),
+        }
+
+    return programs
+
+
+def parse_applicant(applicant: dict) -> dict:
+    return {
+        "rating": applicant.get("rating"),
+        "score": int(applicant.get("sumMark")),
+        "priority": applicant.get("priority"),
+        "status": applicant.get("statusName"),
+        "application_id": applicant.get("idApplication"),
+    }
+
+
+def get_admission_indicator(
+    rating: int,
+    places: int
+) -> str:
+
+    if not rating or not places:
+        return "⚪"
+
+    if rating <= places * 0.9:
+        return "🟢"
+
+    if rating <= places:
+        return "🟡"
+
+    return "🔴"
+
+
+competition_ids = get_student_competitions(STUDENT_ID)
+
+applicants_data = get_all_applicants(competition_ids)
+
+for competition_id, applicants in applicants_data.items():
+
+    program_info = {}
+
+    for organization_id in ORGANIZATION_IDS:
         try:
-            data = get_applicants(cid)
-            result[cid] = data.get("applicants", [])
+            program_info = get_program_info(
+                organization_id=organization_id,
+                competition_ids=[competition_id]
+            )
 
-            print(f"  → {len(result[cid])} абитуриентов")
+            if competition_id in program_info:
+                break
 
-        except Exception as e:
-            print(f"  ❌ ошибка {cid}: {e}")
+        except Exception:
+            pass
 
-    return result
+    competition_info = program_info.get(competition_id, {})
 
+    for applicant in applicants:
 
-if True:
-    competition_ids = [106611, 106610, 106614, 106612]
+        applicant_info = parse_applicant(applicant)
 
-    data = get_all_applicants(competition_ids)
-    total = sum(len(v) for v in data.values())
+        if applicant_info["application_id"] != STUDENT_ID:
+            continue
 
-    for cid, apps in data.items():
+        places = competition_info.get("places") or 0
+        rating = applicant_info["rating"]
 
-        for a in apps:
-            p = parse_applicant(a)
+        indicator = get_admission_indicator(
+            rating=rating,
+            places=places
+        )
 
-            if p["id"] == student_id:
-                print("\nCompetition:", cid)
-                print(*list(p.values()))
+        print("\n======================")
+        print("ВУЗ:", competition_info.get("university"))
+        print("Программа:", competition_info.get("program"))
+        print("Форма:", competition_info.get("education_form"))
+        print("Мест:", places)
+        print()
+        print(f"{indicator} Вероятность поступления")
+        print()
+        print(
+            f"Место: {applicant_info['rating']} | "
+            f"Баллы: {applicant_info['score']} | "
+            f"Приоритет: {applicant_info['priority']} | "
+            f"Статус: {applicant_info['status']}"
+        )
+        print("----------------------")
+
+        break
