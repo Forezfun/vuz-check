@@ -3,7 +3,7 @@ import browser_cookie3
 
 
 STUDENT_ID = 1280590
-ORGANIZATION_IDS = [2264, 118]
+ORGANIZATION_IDS = [2264,113,1858,20]
 
 BASE_URL = "https://www.gosuslugi.ru"
 
@@ -89,12 +89,19 @@ def get_program_info(
         if program.get("programs"):
             program_name = program["programs"][0]["name"]
 
+        # print(program)
+        type_cost=None 
+        place_type_id = program.get("placeTypeId")
+        if place_type_id == 1:type_cost='Бюджет'
+        if place_type_id == 2:type_cost='Целевое'
+        if place_type_id == 3:type_cost='Платное'
         programs[program["id"]] = {
             "university": program.get("humanReadableTitle"),
             "program": program_name,
+            "type_cost":type_cost,
             "education_form": program.get("educationFormName"),
             "places": program.get("numberPlaces"),
-            "organization_id": program.get("organizationId"),
+            "organization_id": program.get("organizationId")
         }
 
     return programs
@@ -164,12 +171,13 @@ for competition_id, applicants in applicants_data.items():
             rating=rating,
             places=places
         )
-
         print("\n======================")
         print("ВУЗ:", competition_info.get("university"))
         print("Программа:", competition_info.get("program"))
         print("Форма:", competition_info.get("education_form"))
+        print("Тип обучения по цене:",competition_info.get("type_cost"))
         print("Мест:", places)
+        print("Подано заявлений:",len(applicants))
         print()
         print(f"{indicator} Вероятность поступления")
         print()
