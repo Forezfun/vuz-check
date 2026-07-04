@@ -4,6 +4,7 @@ import browser_cookie3
 
 STUDENT_ID = 1280590
 ORGANIZATION_IDS = [2264,113,1858,20]
+# ORGANIZATION_IDS = [2264,113,1858,20]
 
 BASE_URL = "https://www.gosuslugi.ru"
 
@@ -81,7 +82,7 @@ def get_program_info(
     response.raise_for_status()
 
     programs = {}
-
+    # print(response.status_code)
     for program in response.json():
 
         program_name = None
@@ -134,59 +135,89 @@ def get_admission_indicator(
     return "🔴"
 
 
-competition_ids = get_student_competitions(STUDENT_ID)
 
-applicants_data = get_all_applicants(competition_ids)
+if True:
+    competition_ids = get_student_competitions(STUDENT_ID)
 
-for competition_id, applicants in applicants_data.items():
+    applicants_data = get_all_applicants(competition_ids)
 
-    program_info = {}
+    all_apps=set()
+    for competition_id, applicants in applicants_data.items():
 
-    for organization_id in ORGANIZATION_IDS:
-        try:
-            program_info = get_program_info(
-                organization_id=organization_id,
-                competition_ids=[competition_id]
+        program_info = {}
+
+        for organization_id in ORGANIZATION_IDS:
+            try:
+                program_info = get_program_info(
+                    organization_id=organization_id,
+                    competition_ids=[competition_id]
+                )
+
+                if competition_id in program_info:
+                    break
+
+            except Exception:
+                pass
+
+        competition_info = program_info.get(competition_id, {})
+
+        for applicant in applicants:
+
+            applicant_info = parse_applicant(applicant)
+
+            if applicant_info["application_id"] != STUDENT_ID:
+                continue
+
+            places = competition_info.get("places") or 0
+            rating = applicant_info["rating"]
+
+            indicator = get_admission_indicator(
+                rating=rating,
+                places=places
             )
+            print("\n======================")
+            print(competition_id)
+            print("ВУЗ:", competition_info.get("university"))
+            print("Программа:", competition_info.get("program"))
+            print("Форма:", competition_info.get("education_form"))
+            print("Тип обучения по цене:",competition_info.get("type_cost"))
+            print("Мест:", places)
+            print("Подано заявлений:",len(applicants))
+            print()
+            print(f"{indicator} Вероятность поступления")
+            print()
+            print(
+                f"Место: {applicant_info['rating']} | "
+                f"Баллы: {applicant_info['score']} | "
+                f"Приоритет: {applicant_info['priority']} | "
+                f"Статус: {applicant_info['status']}"
+            )
+            print("----------------------")
 
-            if competition_id in program_info:
-                break
+            break
 
-        except Exception:
-            pass
-
-    competition_info = program_info.get(competition_id, {})
-
-    for applicant in applicants:
-
-        applicant_info = parse_applicant(applicant)
-
-        if applicant_info["application_id"] != STUDENT_ID:
-            continue
-
-        places = competition_info.get("places") or 0
-        rating = applicant_info["rating"]
-
-        indicator = get_admission_indicator(
-            rating=rating,
-            places=places
-        )
-        print("\n======================")
-        print("ВУЗ:", competition_info.get("university"))
-        print("Программа:", competition_info.get("program"))
-        print("Форма:", competition_info.get("education_form"))
-        print("Тип обучения по цене:",competition_info.get("type_cost"))
-        print("Мест:", places)
-        print("Подано заявлений:",len(applicants))
-        print()
-        print(f"{indicator} Вероятность поступления")
-        print()
-        print(
-            f"Место: {applicant_info['rating']} | "
-            f"Баллы: {applicant_info['score']} | "
-            f"Приоритет: {applicant_info['priority']} | "
-            f"Статус: {applicant_info['status']}"
-        )
-        print("----------------------")
-
-        break
+if False:
+    def forward_get_info(competition_id,organization_id):
+        program_info=get_program_info(
+                    organization_id=organization_id,
+                    competition_ids=[competition_id]
+                )
+        return program_info
+    orgid=2264
+    compid=106611
+    def filter_programs_by_orgid(programs):
+        filtered_arr=[]
+        for program in programs:
+            info=get_program_info(orgid,[program])
+            if len(info.values())>0:filtered_arr.append({"competition_id":program,**info[program]})
+        return filtered_arr
+    def get_all_competitions_of_university(competition_id,organization_id):
+        all_competitions=[]
+        hbids=[]
+        for app in get_applicants(competition_id).get('applicants'):
+            stud_comps=get_student_competitions(app['idApplication'])
+            for comp in filter_programs_by_orgid(stud_comps):
+                print(all_competitions)
+                if (not comp['competition_id'] in hbids):all_competitions.append(comp);hbids.append(comp['competition_id'])
+        return all_competitions
+    print(get_all_competitions_of_university(compid,orgid))
